@@ -1,0 +1,106 @@
+name: Apply UNTOLD card template update
+
+on:
+  push:
+    branches: [untold-wiki]
+    paths:
+      - '.github/workflows/apply-card-template-update.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: untold-wiki
+
+      - name: Apply canonical card template update
+        shell: python
+        run: |
+          import json, base64, pathlib
+
+          root = pathlib.Path('.')
+          wiki_path = root / 'wiki.json'
+          data = json.loads(wiki_path.read_text(encoding='utf-8'))
+
+          # Decode the exact visual reference thumbnail that was derived from
+          # the user-provided canonical template image in the chat.
+          b64_path = root / 'assets/card-template-reference-thumb.b64'
+          img_path = root / 'assets/card-template-reference.jpg'
+          img_path.write_bytes(base64.b64decode(b64_path.read_text(encoding='utf-8')))
+
+          template_md = (root / 'pages/systems/card-template.md').read_text(encoding='utf-8')
+
+          pages = data.get('pages', [])
+          by_slug = {p.get('slug'): p for p in pages}
+
+          # Canonical card-template page in the web wiki.
+          page = by_slug.get('card-template')
+          if page is None:
+            page = {
+              'slug': 'card-template',
+              'title': 'カード共通テンプレート',
+              'category': 'システム',
+              'path': 'pages/systems/card-template.md',
+              'content': template_md,
+              'images': ['assets/card-template-reference.jpg']
+            }
+            pages.append(page)
+          else:
+            page['content'] = template_md
+            page['images'] = ['assets/card-template-reference.jpg']
+
+          # Correct old 1:1-card statements. 1:1 applies to illustration assets only.
+          if 'book' in by_slug:
+            c = by_slug['book']['content']
+            c = c.replace('取得済みカードは1:1の共通カードテンプレートで表示する。',
+                          '取得済みカードは2:3の共通カードテンプレートで表示する。')
+            by_slug['book']['content'] = c
+
+          if 'card-system' in by_slug:
+            c = by_slug['card-system']['content']
+            c = c.replace('- カード外形は **1:1の正方形**。', '- カード外形は **2:3の縦長**。')
+            c = c.replace('- 既存のカード画像の見え方を基準に、レイアウト比率は次を基本値とする。\n  - 番号＋名称：約14%\n  - イラスト領域：約58%\n  - 説明文領域：約28%\n',
+                          '- レイアウトの具体的な余白・配置比率は、正式テンプレート画像 `assets/card-template-reference.jpg` を視覚基準とする。\n')
+            marker = '## イラスト素材の管理【確定】\n\n'
+            addition = (
+              '- カードに差し込むイラスト素材は **必ず1:1の正方形で生成する**。\n'
+              '- ChatGPTが新しいカードイラストを制作する場合も、完成カードではなく1:1のイラスト素材として生成する。\n'
+              '- イラストの縁はぼかし、わずかに透過感を持たせ、カード紙面へ自然に溶け込ませる。\n'
+              '- イラスト領域専用の四角い枠・額縁は使用しない。\n'
+              '- カード全体の正式な視覚基準は `assets/card-template-reference.jpg` とする。\n'
+            )
+            if addition not in c:
+              c = c.replace(marker, marker + addition)
+            by_slug['card-system']['content'] = c
+
+          if 'implementation' in by_slug:
+            c = by_slug['implementation']['content']
+            c = c.replace('指定カード99種は共通の1:1正方形テンプレートを使用する。分類ごとにテンプレートは分けない。',
+                          '指定カード99種は共通の2:3縦長テンプレートを使用する。分類ごとにテンプレートは分けない。')
+            c = c.replace('- カード内レイアウトの基本比率は、番号＋名称14%、イラスト58%、説明文28%。\n',
+                          '- カード内の具体的な余白・配置は、正式テンプレート画像 `assets/card-template-reference.jpg` を視覚基準とする。\n')
+            anchor = '- 実装資産は「共通カードテンプレート＋カードデータ＋カード用イラスト素材」に分離する。完成カードの一枚絵をゲーム実装の正本にしない。\n'
+            extra = (
+              '- カード用イラスト素材は必ず1:1の正方形で生成する。\n'
+              '- イラストの縁はぼかし、少し透過感を持たせて紙面へ馴染ませ、イラスト専用枠は付けない。\n'
+              '- 正式なカード視覚テンプレートは `assets/card-template-reference.jpg`。\n'
+            )
+            if extra not in c:
+              c = c.replace(anchor, anchor + extra)
+            by_slug['implementation']['content'] = c
+
+          data['pages'] = pages
+          data['updatedAt'] = '2026-09-12'
+          wiki_path.write_text(json.dumps(data, ensure_ascii=False, separators=(',', ':')), encoding='utf-8')
+
+      - name: Commit generated wiki update and template image
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add wiki.json assets/card-template-reference.jpg pages/systems/card-template.md
+          git commit -m "Apply canonical UNTOLD card template" || exit 0
+          git push origin untold-wiki
