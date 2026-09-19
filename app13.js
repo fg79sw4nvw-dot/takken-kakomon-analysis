@@ -294,6 +294,7 @@ function installDraftAutosave(){
   document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')saveDraftNow()});
   window.addEventListener('pagehide',saveDraftNow,{passive:true});
   if(restored){
+    updateYearMetaAction();
     updateInputProgress();
     const n=document.createElement('div');
     n.className='restoreToast';
@@ -321,6 +322,7 @@ resetForNextExam=function(){
     clearDraft();
     updateInputProgress();
   }
+  updateYearMetaAction();
 };
 window.resetForNextExam=resetForNextExam;
 const resetBtnV55=$('resetNextExam');if(resetBtnV55)resetBtnV55.onclick=resetForNextExam;
